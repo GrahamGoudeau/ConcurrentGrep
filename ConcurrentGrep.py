@@ -3,10 +3,19 @@ import sys
 import threading
 import argparse
 
-HOME = os.path.expanduser('~')
+kill = False
+num_active = 0
+num_active_lock = threading.Semaphore(1)
 
-def search(dir, search_term, search_names):
-    print 'Spawning with ' + dir
+def search(dir, search_term, search_names, threadpool):
+    global num_active
+    global kill
+    if kill: return
+
+    num_active_lock.acquire()
+    num_active += 1
+    num_active_lock.release()
+
     contents = os.listdir(dir)
     directories = [item for item in contents if os.path.isdir(os.path.join(dir, item))]
     files = [item for item in contents if item not in directories]
@@ -14,9 +23,11 @@ def search(dir, search_term, search_names):
     if dir[-1:] != '/':
         dir = dir + '/'
 
-    threads = [threading.Thread(target=search, args=[dir + directory, search_term, search_names])
+    threads = [threading.Thread(target=search, args=[dir + directory, search_term, search_names, threadpool])
                 for directory in directories if directory != '.git']
+
     for thread in threads:
+        threadpool.acquire()
         thread.start()
 
     if search_names:
@@ -30,17 +41,29 @@ def search(dir, search_term, search_names):
                     print '*'*30
                     print dir + file_name + ': ' + search_term
 
+    num_active_lock.acquire()
+    num_active -= 1
+    num_active_lock.release()
+
+    threadpool.release()
+
 def parse_args(argv):
     parser = argparse.ArgumentParser(description='Concurrent grep')
     parser.add_argument('root_dir', default='.', help='root directory')
     parser.add_argument('search_term', help='Term to search for')
     parser.add_argument('-n', dest='search_names', action='store_true', help='Search file names')
+    parser.add_argument('-t', dest='thread_max', type=int, default=2000, help='Max number of threads; default 2000; > 0')
     parser.set_defaults(search_names=False)
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.thread_max < 1:
+        parser.print_help()
+        sys.exit(1)
+    return args
 
 def main(argv):
     args = parse_args(argv)
-    search(args.root_dir, args.search_term, args.search_names)
+    threadpool = threading.Semaphore(args.thread_max)
+    search(args.root_dir, args.search_term, args.search_names, threadpool)
 
 if __name__ == '__main__':
     main(sys.argv)

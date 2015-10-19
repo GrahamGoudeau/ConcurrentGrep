@@ -36,10 +36,11 @@ def search(dir, search_term, search_names, threadpool):
         thread.start()
 
     if search_names:
-        if search_term in files:
-            with print_lock:
-                print '='*30
-                print dir + search_term
+        for file_name in files:
+            if search_term in file_name:
+                with print_lock:
+                    print '='*30
+                    print dir + file_name
     else:
         for file_name in files:
             with open(dir + file_name, 'r') as f:

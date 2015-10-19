@@ -2,15 +2,21 @@ import os
 import sys
 import threading
 import argparse
+import resource
 
-kill = False
 num_active = 0
 num_active_lock = threading.Semaphore(1)
+print_lock = threading.Semaphore(1)
+
+open_file_limit, _ = resource.getrlimit(resource.RLIMIT_NOFILE)
+
+open_file_lock = threading.Semaphore(open_file_limit - 1)
 
 def search(dir, search_term, search_names, threadpool):
     global num_active
-    global kill
-    if kill: return
+    global print_lock
+    global open_file_lock
+    threadpool.acquire()
 
     num_active_lock.acquire()
     num_active += 1
@@ -27,19 +33,21 @@ def search(dir, search_term, search_names, threadpool):
                 for directory in directories if directory != '.git']
 
     for thread in threads:
-        threadpool.acquire()
         thread.start()
 
     if search_names:
         if search_term in files:
-            print '='*30
-            print dir + search_term
+            with print_lock:
+                print '='*30
+                print dir + search_term
     else:
         for file_name in files:
             with open(dir + file_name, 'r') as f:
-                if search_term in f.read():
-                    print '*'*30
-                    print dir + file_name + ': ' + search_term
+                with open_file_lock:
+                    if search_term in f.read():
+                        with print_lock:
+                            print '*'*30
+                            print dir + file_name + ': ' + search_term
 
     num_active_lock.acquire()
     num_active -= 1

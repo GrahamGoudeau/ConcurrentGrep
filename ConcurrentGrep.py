@@ -4,23 +4,14 @@ import threading
 import argparse
 import resource
 
-num_active = 0
-num_active_lock = threading.Semaphore(1)
 print_lock = threading.Semaphore(1)
-
 open_file_limit, _ = resource.getrlimit(resource.RLIMIT_NOFILE)
-
-open_file_lock = threading.Semaphore(open_file_limit - 1)
+open_file_lock = threading.Semaphore(open_file_limit / 2)
+default_thread_max = 2000
 
 def search(dir, search_term, search_names, threadpool):
-    global num_active
-    global print_lock
     global open_file_lock
     threadpool.acquire()
-
-    num_active_lock.acquire()
-    num_active += 1
-    num_active_lock.release()
 
     contents = os.listdir(dir)
     directories = [item for item in contents if os.path.isdir(os.path.join(dir, item))]
@@ -43,16 +34,12 @@ def search(dir, search_term, search_names, threadpool):
                     print dir + file_name
     else:
         for file_name in files:
-            with open(dir + file_name, 'r') as f:
-                with open_file_lock:
+            with open_file_lock:
+                with open(dir + file_name, 'r') as f:
                     if search_term in f.read():
                         with print_lock:
                             print '*'*30
                             print dir + file_name + ': ' + search_term
-
-    num_active_lock.acquire()
-    num_active -= 1
-    num_active_lock.release()
 
     threadpool.release()
 
@@ -61,7 +48,8 @@ def parse_args(argv):
     parser.add_argument('root_dir', default='.', help='root directory')
     parser.add_argument('search_term', help='Term to search for')
     parser.add_argument('-n', dest='search_names', action='store_true', help='Search file names')
-    parser.add_argument('-t', dest='thread_max', type=int, default=2000, help='Max number of threads; default 2000; > 0')
+    parser.add_argument('-t', dest='thread_max', type=int, default=default_thread_max,
+                        help='Max number of threads; default 2000; > 0')
     parser.set_defaults(search_names=False)
     args = parser.parse_args()
     if args.thread_max < 1:

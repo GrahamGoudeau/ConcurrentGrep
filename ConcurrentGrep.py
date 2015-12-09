@@ -9,6 +9,8 @@ open_file_limit, _ = resource.getrlimit(resource.RLIMIT_NOFILE)
 open_file_lock = threading.Semaphore(open_file_limit / 2)
 default_thread_max = 2000
 
+restricted_dirs = ['.git']
+
 def search(dir, search_term, search_names, threadpool):
     global open_file_lock
     threadpool.acquire()
@@ -21,7 +23,7 @@ def search(dir, search_term, search_names, threadpool):
         dir = dir + '/'
 
     threads = [threading.Thread(target=search, args=[dir + directory, search_term, search_names, threadpool])
-                for directory in directories if directory != '.git']
+                for directory in directories if directory not in restricted_dirs]
 
     for thread in threads:
         thread.start()
